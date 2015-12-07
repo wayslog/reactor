@@ -103,8 +103,17 @@ impl<'a, 'b : 'a> ReactorCtrl<'a, 'b> {
                    port: usize,
                    handler: Box<ConnHandler<'b>>) -> Result<Token>
     {
-        let saddr = try!(lookup_host(hostname).and_then(|ref mut lh| lh.nth(0)
-                            .ok_or(Error::last_os_error()))
+        let saddr = try!(lookup_host(hostname)
+                        .and_then(|ref mut lh| {
+                            lh.find(|x| {
+                                match *x {
+                                    Ok(SocketAddr::V4(_))=> true,
+                                    Ok(SocketAddr::V6(_)) => false,
+                                    _ => panic!("socket addr not found")
+                                }
+                            })
+                            .ok_or(Error::last_os_error())
+                        })
                         .and_then(move |sa| { match sa {
                             Ok(SocketAddr::V4(sa4)) =>
                                 Ok(SocketAddr::V4(SocketAddrV4::new(*sa4.ip(), port as u16))),
@@ -128,7 +137,17 @@ impl<'a, 'b : 'a> ReactorCtrl<'a, 'b> {
                       addr: A,
                       handler: Box<ConnHandler<'b>>) -> Result<Token>
     {
-        let saddr : SocketAddr = try!(addr.to_socket_addrs().and_then(|ref mut a| a.nth(0).ok_or(Error::last_os_error())));
+        let saddr : SocketAddr = try!(addr.to_socket_addrs()
+                                    .and_then(|ref mut a| {
+                                        a.find(|x| {
+                                            match *x {
+                                                SocketAddr::V4(_)=> true,
+                                                SocketAddr::V6(_) => false,
+                                            }
+                                        })
+                                        .ok_or(Error::last_os_error())
+                                    })
+                                    );
         let server = try!(TcpListener::bind(&saddr));
         let tok = try!(self.state.listeners.insert(Some((server,handler)))
                 .map_err(|_|Error::new(ErrorKind::Other, "Failed to insert into slab")));
